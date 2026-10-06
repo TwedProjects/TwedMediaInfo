@@ -18,6 +18,7 @@
 #define TWEDMEDIAINFO_ADAPTER_H
 
 #include <string>
+#include <cstdint>
 
 namespace twedmediainfo {
 
@@ -50,6 +51,38 @@ public:
      * @return true si el archivo fue abierto correctamente.
      */
     bool open(const std::string& path);
+
+    /**
+     * Inicializa el buffer para análisis mediante stream.
+     * @param fileSize Tamaño total del archivo (-1 si desconocido).
+     * @return true si se inicializó correctamente.
+     */
+    bool openBufferInit(int64_t fileSize);
+
+    /**
+     * Continúa el análisis pasando un buffer de datos.
+     * @param buffer Buffer con datos del archivo.
+     * @param size Número de bytes válidos en el buffer.
+     * @return Bitfield de estado:
+     *         bit 0: Is Accepted (formato conocido)
+     *         bit 1: Is Filled (datos principales recolectados)
+     *         bit 2: Is Updated (algunos datos actualizados)
+     *         bit 3: Is Finalized (no se necesitan más datos)
+     */
+    int openBufferContinue(const uint8_t* buffer, size_t size);
+
+    /**
+     * Obtiene la posición de seek solicitada por MediaInfo.
+     * @return Offset solicitado, o -1 si no hay seek pendiente,
+     *         o fileSize si no se necesitan más bytes.
+     */
+    int64_t openBufferGoToGet();
+
+    /**
+     * Finaliza el análisis del buffer.
+     * @return true si se finalizó correctamente.
+     */
+    bool openBufferFinalize();
 
     /**
      * Cierra el archivo actualmente abierto.

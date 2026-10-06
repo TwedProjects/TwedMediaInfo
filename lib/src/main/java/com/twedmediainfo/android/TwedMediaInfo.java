@@ -16,7 +16,19 @@
 
 package com.twedmediainfo.android;
 
+import android.content.Context;
+import android.net.Uri;
+import android.os.ParcelFileDescriptor;
+import android.provider.OpenableColumns;
+import android.database.Cursor;
+
 import com.twedmediainfo.android.internal.NativeBridge;
+
+import java.io.FileDescriptor;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 
 /**
  * Wrapper de MediaInfoLib 26.05 para análisis de archivos multimedia en Android.
@@ -25,7 +37,10 @@ import com.twedmediainfo.android.internal.NativeBridge;
  * La capa nativa (MediaInfoLib, ZenLib y zlib) está enlazada estáticamente
  * en {@code libtwedmediainfo.so}.
  * <p>
- * Uso típico:
+ * TwedMediaInfo admite el análisis mediante Uri cuando el proveedor de contenido
+ * proporciona acceso de lectura compatible con el procesamiento requerido por MediaInfoLib.
+ * <p>
+ * Uso típico con File:
  * <pre>{@code
  * TwedMediaInfo mediaInfo = new TwedMediaInfo();
  * try {
@@ -34,8 +49,6 @@ import com.twedmediainfo.android.internal.NativeBridge;
  *         int audioCount = mediaInfo.countStreams(StreamKind.AUDIO);
  *         for (int i = 0; i < audioCount; i++) {
  *             String audioFormat = mediaInfo.get(StreamKind.AUDIO, i, Audio.FORMAT);
- *             String bitrate = mediaInfo.get(StreamKind.AUDIO, i, Audio.BITRATE_STRING);
- *             String channels = mediaInfo.get(StreamKind.AUDIO, i, Audio.CHANNELS_STRING);
  *         }
  *     }
  * } finally {
@@ -43,23 +56,35 @@ import com.twedmediainfo.android.internal.NativeBridge;
  * }
  * }</pre>
  * <p>
- * La API genérica {@link #get(int, int, String)} permite consultar cualquier parámetro expuesto por
- * MediaInfoLib 26.05. Los parámetros de audio más comunes están disponibles
- * como constantes en {@link com.twedmediainfo.android.parameters.Audio}.
- * Para la lista completa consultar los archivos .csv en
- * Source/Resource/Text/Stream/ en MediaInfoLib.
+ * Uso típico con Uri:
+ * <pre>{@code
+ * TwedMediaInfo mediaInfo = new TwedMediaInfo(context);
+ * try {
+ *     if (mediaInfo.open(uri)) {
+ *         String format = mediaInfo.getGeneral("Format");
+ *         // ... mismas consultas que con File
+ *     }
+ * } finally {
+ *     mediaInfo.destroy();
+ * }
+ * }</pre>
  */
 public class TwedMediaInfo {
 
     private long handle;
     private boolean isOpen;
+    private final Context context;
 
     /**
-     * Crea una nueva instancia de TwedMediaInfo.
+     * Crea una nueva instancia de TwedMediaInfo sin Context.
+     * <p>
+     * Este constructor permite usar {@link #open(String)} para rutas de archivo.
+     * Para usar {@link #open(Uri)} se requiere el constructor con Context.
      * 
      * @throws IllegalStateException si no se puede crear la instancia nativa
      */
     public TwedMediaInfo() {
+        this.context = null;
         this.handle = NativeBridge.nativeCreate();
         this.isOpen = false;
         
@@ -69,7 +94,27 @@ public class TwedMediaInfo {
     }
 
     /**
-     * Abre un archivo multimedia para análisis.
+     * Crea una nueva instancia de TwedMediaInfo con Context para soporte de Uri.
+     * <p>
+     * Este constructor permite usar tanto {@link #open(String)} como {@link #open(Uri)}.
+     * El Context se guarda internamente como applicationContext para evitar retener
+     * referencias a Activity/Service.
+     * 
+     * @param context Context de Android (se usará getApplicationContext())
+     * @throws IllegalStateException si no se puede crear la instancia nativa
+     */
+    public TwedMediaInfo(Context context) {
+        this.context = context.getApplicationContext();
+        this.handle = NativeBridge.nativeCreate();
+        this.isOpen = false;
+        
+        if (handle == 0L) {
+            throw new IllegalStateException("Failed to create native MediaInfo instance");
+        }
+    }
+
+    /**
+     * Abre un archivo multimedia para análisis mediante ruta de archivo.
      * <p>
      * Si ya hay un archivo abierto, lo cierra antes de abrir el nuevo.
      *
@@ -83,6 +128,176 @@ public class TwedMediaInfo {
         boolean result = NativeBridge.nativeOpen(handle, filePath);
         isOpen = result;
         return result;
+    }
+
+    /**
+     * Abre un archivo multimedia para análisis mediante Uri.
+     * <p>
+     * Utiliza ContentResolver para obtener acceso al contenido del Uri.
+     * Requiere que esta instancia haya sido creada con {@link #TwedMediaInfo(Context)}.
+     * <p>
+     * Si ya hay un archivo abierto, lo cierra antes de abrir el nuevo.
+     * <p>
+     * Nota: No todos los Uri son compatibles. El proveedor de contenido debe proporcionar
+     * acceso de lectura y, preferiblemente, capacidad de seek para análisis completo.
+     *
+     * @param uri Uri del archivo multimedia (content://, file://, etc.)
+     * @return {@code true} si el archivo se abrió correctamente, {@code false} en caso contrario.
+     * @throws IllegalStateException si esta instancia fue creada sin Context
+     */
+    public boolean open(Uri uri) {
+        if (context == null) {
+            throw new IllegalStateException(
+                "open(Uri) requires TwedMediaInfo(Context) constructor. " +
+                "Use new TwedMediaInfo(context) instead of new TwedMediaInfo()."
+            );
+        }
+        if (uri == null) {
+            return false;
+        }
+        
+        if (isOpen) {
+            close();
+        }
+        
+        ParcelFileDescriptor pfd = null;
+        FileInputStream fis = null;
+        FileChannel channel = null;
+        
+        try {
+            // Abrir el descriptor de archivo
+            pfd = context.getContentResolver().openFileDescriptor(uri, "r");
+            if (pfd == null) {
+                return false;
+            }
+            
+            // Obtener el tamaño del archivo
+            long fileSize = pfd.getStatSize();
+            if (fileSize <= 0) {
+                // Intentar obtener tamaño via ContentResolver query
+                fileSize = getFileSizeFromContentResolver(uri);
+            }
+            
+            // Obtener FileChannel
+            FileDescriptor fd = pfd.getFileDescriptor();
+            fis = new FileInputStream(fd);
+            channel = fis.getChannel();
+            
+            // Verificar si el canal es seekable
+            boolean seekable = isChannelSeekable(channel);
+            
+            // Inicializar el buffer de MediaInfo
+            if (!NativeBridge.nativeOpenBufferInit(handle, fileSize)) {
+                return false;
+            }
+            
+            // Buffer de lectura (64 KiB)
+            byte[] buffer = new byte[64 * 1024];
+            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
+            boolean finalized = false;
+            long currentOffset = 0;
+            
+            while (!finalized) {
+                // Leer datos del canal
+                byteBuffer.clear();
+                int bytesRead = channel.read(byteBuffer);
+                
+                if (bytesRead <= 0) {
+                    // EOF o error
+                    break;
+                }
+                
+                // Pasar datos a MediaInfo
+                int status = NativeBridge.nativeOpenBufferContinue(handle, buffer, bytesRead);
+                currentOffset += bytesRead;
+                
+                // Verificar si MediaInfo finalizó (bit 3: Is Finalized)
+                if ((status & 0x08) != 0) {
+                    finalized = true;
+                    break;
+                }
+                
+                // Verificar si MediaInfo solicita un seek
+                long goTo = NativeBridge.nativeOpenBufferGoToGet(handle);
+                
+                if (goTo >= 0 && goTo < fileSize) {
+                    // MediaInfo solicita seek a esta posición
+                    if (!seekable) {
+                        // No se puede hacer seek, fallar controladamente
+                        return false;
+                    }
+                    
+                    // Hacer seek
+                    channel.position(goTo);
+                    currentOffset = goTo;
+                    
+                    // Re-inicializar buffer con nuevo offset
+                    NativeBridge.nativeOpenBufferInit(handle, fileSize);
+                }
+            }
+            
+            // Finalizar el análisis
+            boolean result = NativeBridge.nativeOpenBufferFinalize(handle);
+            isOpen = result;
+            return result;
+            
+        } catch (Exception e) {
+            return false;
+        } finally {
+            // Cerrar recursos en orden inverso
+            if (channel != null) {
+                try { channel.close(); } catch (IOException e) { /* ignorar */ }
+            }
+            if (fis != null) {
+                try { fis.close(); } catch (IOException e) { /* ignorar */ }
+            }
+            if (pfd != null) {
+                try { pfd.close(); } catch (IOException e) { /* ignorar */ }
+            }
+        }
+    }
+
+    /**
+     * Verifica si un FileChannel soporta operaciones de seek.
+     */
+    private boolean isChannelSeekable(FileChannel channel) {
+        try {
+            long pos = channel.position();
+            channel.position(pos);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Intenta obtener el tamaño del archivo mediante ContentResolver query.
+     */
+    private long getFileSizeFromContentResolver(Uri uri) {
+        Cursor cursor = null;
+        try {
+            cursor = context.getContentResolver().query(
+                uri,
+                new String[]{OpenableColumns.SIZE},
+                null,
+                null,
+                null
+            );
+            
+            if (cursor != null && cursor.moveToFirst()) {
+                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                    return cursor.getLong(sizeIndex);
+                }
+            }
+        } catch (Exception e) {
+            // Ignorar errores de query
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        return -1;
     }
 
     /**

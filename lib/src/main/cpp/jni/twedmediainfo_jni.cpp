@@ -100,6 +100,86 @@ Java_com_twedmediainfo_android_internal_NativeBridge_nativeOpen(
     return result ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_twedmediainfo_android_internal_NativeBridge_nativeOpenBufferInit(
+        JNIEnv* env, jclass /* clazz */, jlong handle, jlong fileSize) {
+    if (handle == 0) {
+        LOGE("nativeOpenBufferInit: invalid handle");
+        return JNI_FALSE;
+    }
+
+    auto* adapter = reinterpret_cast<twedmediainfo::TwedMediaInfoAdapter*>(handle);
+    bool result = adapter->openBufferInit(static_cast<int64_t>(fileSize));
+    
+    if (result) {
+        LOGI("Buffer initialized with fileSize: %lld", static_cast<long long>(fileSize));
+    } else {
+        LOGE("Failed to initialize buffer");
+    }
+    
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_twedmediainfo_android_internal_NativeBridge_nativeOpenBufferContinue(
+        JNIEnv* env, jclass /* clazz */, jlong handle, jbyteArray buffer, jint size) {
+    if (handle == 0) {
+        LOGE("nativeOpenBufferContinue: invalid handle");
+        return 0;
+    }
+
+    auto* adapter = reinterpret_cast<twedmediainfo::TwedMediaInfoAdapter*>(handle);
+    
+    jbyte* bufferPtr = env->GetByteArrayElements(buffer, nullptr);
+    if (bufferPtr == nullptr) {
+        LOGE("nativeOpenBufferContinue: failed to get buffer elements");
+        return 0;
+    }
+    
+    int result = adapter->openBufferContinue(
+        reinterpret_cast<const uint8_t*>(bufferPtr),
+        static_cast<size_t>(size)
+    );
+    
+    env->ReleaseByteArrayElements(buffer, bufferPtr, JNI_ABORT);
+    
+    return static_cast<jint>(result);
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_twedmediainfo_android_internal_NativeBridge_nativeOpenBufferGoToGet(
+        JNIEnv* env, jclass /* clazz */, jlong handle) {
+    if (handle == 0) {
+        LOGE("nativeOpenBufferGoToGet: invalid handle");
+        return -1;
+    }
+
+    auto* adapter = reinterpret_cast<twedmediainfo::TwedMediaInfoAdapter*>(handle);
+    int64_t goTo = adapter->openBufferGoToGet();
+    
+    return static_cast<jlong>(goTo);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_twedmediainfo_android_internal_NativeBridge_nativeOpenBufferFinalize(
+        JNIEnv* env, jclass /* clazz */, jlong handle) {
+    if (handle == 0) {
+        LOGE("nativeOpenBufferFinalize: invalid handle");
+        return JNI_FALSE;
+    }
+
+    auto* adapter = reinterpret_cast<twedmediainfo::TwedMediaInfoAdapter*>(handle);
+    bool result = adapter->openBufferFinalize();
+    
+    if (result) {
+        LOGI("Buffer finalized successfully");
+    } else {
+        LOGE("Failed to finalize buffer");
+    }
+    
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_twedmediainfo_android_internal_NativeBridge_nativeGetGeneral(
         JNIEnv* env, jclass /* clazz */, jlong handle, jstring parameter) {

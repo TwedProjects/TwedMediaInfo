@@ -52,6 +52,42 @@ public final class NativeBridge {
     public static native boolean nativeOpen(long handle, String path);
 
     /**
+     * Inicializa el buffer para análisis mediante stream.
+     * @param handle Handle nativo
+     * @param fileSize Tamaño total del archivo (-1 si desconocido)
+     * @return true si se inicializó correctamente
+     */
+    public static native boolean nativeOpenBufferInit(long handle, long fileSize);
+
+    /**
+     * Continúa el análisis pasando un buffer de datos.
+     * @param handle Handle nativo
+     * @param buffer Buffer con datos del archivo
+     * @param size Número de bytes válidos en el buffer
+     * @return Bitfield de estado:
+     *         bit 0: Is Accepted (formato conocido)
+     *         bit 1: Is Filled (datos principales recolectados)
+     *         bit 2: Is Updated (algunos datos actualizados)
+     *         bit 3: Is Finalized (no se necesitan más datos)
+     */
+    public static native int nativeOpenBufferContinue(long handle, byte[] buffer, int size);
+
+    /**
+     * Obtiene la posición de seek solicitada por MediaInfo.
+     * @param handle Handle nativo
+     * @return Offset solicitado, o -1 si no hay seek pendiente,
+     *         o fileSize si no se necesitan más bytes
+     */
+    public static native long nativeOpenBufferGoToGet(long handle);
+
+    /**
+     * Finaliza el análisis del buffer.
+     * @param handle Handle nativo
+     * @return true si se finalizó correctamente
+     */
+    public static native boolean nativeOpenBufferFinalize(long handle);
+
+    /**
      * Obtiene información general del archivo (Stream_General, stream 0).
      * @param handle Handle nativo
      * @param parameter Nombre del parámetro (ej: "Format", "Duration")

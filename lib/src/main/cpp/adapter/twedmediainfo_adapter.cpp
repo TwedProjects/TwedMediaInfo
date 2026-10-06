@@ -62,6 +62,76 @@ bool TwedMediaInfoAdapter::open(const std::string& path) {
     }
 }
 
+bool TwedMediaInfoAdapter::openBufferInit(int64_t fileSize) {
+    if (isOpen_) {
+        close();
+    }
+
+    auto* mi = new MediaInfoLib::MediaInfo();
+    
+    ZenLib::int64u fileSizeParam = (fileSize >= 0) 
+        ? static_cast<ZenLib::int64u>(fileSize) 
+        : static_cast<ZenLib::int64u>(-1);
+    
+    size_t result = mi->Open_Buffer_Init(fileSizeParam, 0);
+    
+    if (result > 0) {
+        nativeHandle_ = static_cast<void*>(mi);
+        isOpen_ = true;
+        return true;
+    } else {
+        delete mi;
+        nativeHandle_ = nullptr;
+        isOpen_ = false;
+        return false;
+    }
+}
+
+int TwedMediaInfoAdapter::openBufferContinue(const uint8_t* buffer, size_t size) {
+    if (!isOpen_ || nativeHandle_ == nullptr) {
+        return 0;
+    }
+
+    auto* mi = static_cast<MediaInfoLib::MediaInfo*>(nativeHandle_);
+    
+    size_t result = mi->Open_Buffer_Continue(
+        static_cast<const ZenLib::int8u*>(buffer),
+        size
+    );
+    
+    return static_cast<int>(result);
+}
+
+int64_t TwedMediaInfoAdapter::openBufferGoToGet() {
+    if (!isOpen_ || nativeHandle_ == nullptr) {
+        return -1;
+    }
+
+    auto* mi = static_cast<MediaInfoLib::MediaInfo*>(nativeHandle_);
+    
+    ZenLib::int64u goTo = mi->Open_Buffer_Continue_GoTo_Get();
+    
+    // MediaInfo retorna (ZenLib::int64u)-1 si no hay seek pendiente
+    // Convertir a int64_t para retornar -1 en ese caso
+    if (goTo == static_cast<ZenLib::int64u>(-1)) {
+        return -1;
+    }
+    
+    return static_cast<int64_t>(goTo);
+}
+
+bool TwedMediaInfoAdapter::openBufferFinalize() {
+    if (!isOpen_ || nativeHandle_ == nullptr) {
+        return false;
+    }
+
+    auto* mi = static_cast<MediaInfoLib::MediaInfo*>(nativeHandle_);
+    
+    size_t result = mi->Open_Buffer_Finalize();
+    
+    return result > 0;
+}
+
 void TwedMediaInfoAdapter::close() {
     if (nativeHandle_ != nullptr) {
         auto* mi = static_cast<MediaInfoLib::MediaInfo*>(nativeHandle_);

@@ -26,7 +26,7 @@ android {
     defaultConfig {
         minSdk = 24
 
-        consumerProguardFiles("proguard-rules.pro")
+        consumerProguardFiles("consumer-rules.pro")
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -45,7 +45,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

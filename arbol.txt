@@ -1,0 +1,46 @@
+.
+├── .github
+│   └── workflows
+│       └── build.yml
+├── LICENSE
+├── README.md
+├── build.gradle.kts
+├── gradle
+│   ├── libs.versions.toml
+│   └── wrapper
+│       ├── gradle-wrapper.jar
+│       └── gradle-wrapper.properties
+├── gradle.properties
+├── gradlew
+├── gradlew.bat
+├── lib
+│   ├── build.gradle.kts
+│   ├── proguard-rules.pro
+│   └── src
+│       └── main
+│           ├── cpp
+│           │   ├── CMakeLists.txt
+│           │   ├── adapter
+│           │   │   ├── twedmediainfo_adapter.cpp
+│           │   │   └── twedmediainfo_adapter.h
+│           │   └── jni
+│           │       └── twedmediainfo_jni.cpp
+│           └── java
+│               └── com
+│                   └── twedmediainfo
+│                       └── android
+│                           ├── StreamKind.java
+│                           ├── TwedMediaInfo.java
+│                           ├── internal
+│                           │   ├── NativeBridge.java
+│                           │   └── NativeLoader.java
+│                           └── parameters
+│                               ├── Audio.java
+│                               ├── General.java
+│                               ├── Image.java
+│                               ├── Other.java
+│                               ├── Text.java
+│                               └── Video.java
+└── settings.gradle.kts
+
+17 directories, 27 files

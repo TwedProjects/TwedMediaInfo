@@ -64,7 +64,7 @@ mavenPublishing {
     coordinates(
         "io.github.boludohh",
         "twedmediainfo",
-        "0.0.0"
+        "0.1.0"
     )
 
     pom {

@@ -11,9 +11,10 @@ on:
 permissions:
   contents: read
 
+# En main no se cancela una ejecución en curso, para no cortar una publicación a medias.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   NDK_VERSION: "28.2.13676358"
@@ -23,7 +24,7 @@ env:
 
 jobs:
   build:
-    name: Compilar TwedMediaInfo
+    name: Compilar y publicar TwedMediaInfo
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -129,27 +130,7 @@ jobs:
         run: |
           ./gradlew :lib:assembleDebug :lib:assembleRelease --stacktrace --no-daemon
 
-      - name: Publicar AAR en Maven Local
-        run: |
-          ./gradlew :lib:publishToMavenLocal --stacktrace --no-daemon
-
-      - name: Verificar publicación en Maven Local
-        run: |
-          set -euo pipefail
-          
-          MAVEN_LOCAL="${HOME}/.m2/repository/com/twedmediainfo/twedmediainfo/0.1.0-SNAPSHOT"
-          
-          if [ ! -d "${MAVEN_LOCAL}" ]; then
-            echo "ERROR: No se encontró el directorio de Maven Local: ${MAVEN_LOCAL}"
-            echo "Contenido de ~/.m2/repository:"
-            find "${HOME}/.m2/repository" -type d -maxdepth 4 || true
-            exit 1
-          fi
-          
-          echo "✅ AAR publicado correctamente en Maven Local"
-          echo "Contenido de ${MAVEN_LOCAL}:"
-          ls -lah "${MAVEN_LOCAL}"
-
+      # Se sube antes de publicar para que el AAR quede guardado aunque falle la publicación.
       - name: Subir AAR como artefacto
         if: always()
         uses: actions/upload-artifact@v4
@@ -157,3 +138,29 @@ jobs:
           name: twedmediainfo-aar
           path: lib/build/outputs/aar/*.aar
           if-no-files-found: warn
+
+      # Solo corre en push a main. Los secrets nunca llegan a pull requests de forks.
+      # Con automaticRelease = false el deployment queda pendiente: hay que
+      # tocar "Publish" (o "Drop") a mano en central.sonatype.com > Deployments.
+      - name: Publicar en Maven Central
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          for var in \
+            ORG_GRADLE_PROJECT_mavenCentralUsername \
+            ORG_GRADLE_PROJECT_mavenCentralPassword \
+            ORG_GRADLE_PROJECT_signingInMemoryKey \
+            ORG_GRADLE_PROJECT_signingInMemoryKeyPassword; do
+            if [ -z "${!var}" ]; then
+              echo "ERROR: falta el secret asociado a ${var}."
+              exit 1
+            fi
+          done
+
+          ./gradlew :lib:publishToMavenCentral --stacktrace --no-daemon

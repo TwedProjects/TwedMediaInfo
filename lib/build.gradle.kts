@@ -1,22 +1,10 @@
 /*
  * Copyright 2026 TwedMediaInfo Contributors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 
 plugins {
     alias(libs.plugins.android.library)
-    `maven-publish`
+    alias(libs.plugins.maven.publish)
 }
 
 android {
@@ -45,7 +33,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -66,28 +54,46 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-        }
-    }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("release") {
-            groupId = "com.twedmediainfo"
-            artifactId = "twedmediainfo"
-            version = "0.1.0-SNAPSHOT"
+mavenPublishing {
+    publishToMavenCentral(automaticRelease = false)
 
-            afterEvaluate {
-                from(components["release"])
+    signAllPublications()
+
+    coordinates(
+        "io.github.boludohh",
+        "twedmediainfo",
+        "0.0.0"
+    )
+
+    pom {
+        name = "TwedMediaInfo"
+        description = "Biblioteca Android para analizar archivos multimedia y acceder a sus metadatos e información técnica mediante MediaInfoLib."
+        inceptionYear = "2026"
+        url = "https://github.com/TwedProjects/TwedMediaInfo"
+
+        licenses {
+            license {
+                name = "Apache License 2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0"
+                distribution = "repo"
             }
         }
-    }
-}
 
-dependencies {
-    testImplementation(libs.junit)
+        developers {
+            developer {
+                id = "boludohh"
+                name = "boludohh"
+                email = "lautyryal@gmail.com"
+                url = "https://github.com/boludohh"
+            }
+        }
+
+        scm {
+            url = "https://github.com/TwedProjects/TwedMediaInfo"
+            connection = "scm:git:git://github.com/TwedProjects/TwedMediaInfo.git"
+            developerConnection = "scm:git:ssh://git@github.com/TwedProjects/TwedMediaInfo.git"
+        }
+    }
 }
